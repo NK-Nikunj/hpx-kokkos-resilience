@@ -1,7 +1,9 @@
 add_custom_target(tests)
 
 set(_tests
-    async_replay
+    # async_replay_device
+    # async_replay_host
+    returning_executor
 )
 
 foreach(_test ${_tests})
