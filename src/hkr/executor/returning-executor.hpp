@@ -26,13 +26,13 @@ namespace hpx { namespace kokkos {
 
     /// \brief HPX executor wrapping a Kokkos execution space.
     template <typename ExecutionSpace = Kokkos::DefaultExecutionSpace>
-    class returning_executor
+    class ret_executor
     {
     public:
         using execution_space = ExecutionSpace;
         using execution_category = hpx::execution::parallel_execution_tag;
 
-        explicit returning_executor(
+        explicit ret_executor(
             execution_space_mode mode = execution_space_mode::global)
           : inst(mode == execution_space_mode::global ?
                     ExecutionSpace{} :
@@ -40,7 +40,7 @@ namespace hpx { namespace kokkos {
                         ExecutionSpace>())
         {
         }
-        explicit returning_executor(execution_space const& instance)
+        explicit ret_executor(execution_space const& instance)
           : inst(instance)
         {
         }
@@ -130,35 +130,35 @@ namespace hpx { namespace kokkos {
     };
 
     // Define type aliases
-    using default_returning_executor =
-        returning_executor<Kokkos::DefaultExecutionSpace>;
-    using default_host_returning_executor =
-        returning_executor<Kokkos::DefaultHostExecutionSpace>;
+    using returning_executor =
+        ret_executor<Kokkos::DefaultExecutionSpace>;
+    using returning_host_executor =
+        ret_executor<Kokkos::DefaultHostExecutionSpace>;
 
 #if defined(KOKKOS_ENABLE_CUDA)
-    using cuda_returning_executor = returning_executor<Kokkos::Cuda>;
+    using cuda_returning_executor = ret_executor<Kokkos::Cuda>;
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
     using hip_returning_executor =
-        returning_executor<Kokkos::Experimental::HIP>;
+        ret_executor<Kokkos::Experimental::HIP>;
 #endif
 
 #if defined(KOKKOS_ENABLE_HPX)
     using hpx_returning_executor =
-        returning_executor<Kokkos::Experimental::HPX>;
+        ret_executor<Kokkos::Experimental::HPX>;
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
-    using openmp_returning_executor = returning_executor<Kokkos::OpenMP>;
+    using openmp_returning_executor = ret_executor<Kokkos::OpenMP>;
 #endif
 
 #if defined(KOKKOS_ENABLE_ROCM)
-    using rocm_returning_executor = returning_executor<Kokkos::ROCm>;
+    using rocm_returning_executor = ret_executor<Kokkos::ROCm>;
 #endif
 
 #if defined(KOKKOS_ENABLE_SERIAL)
-    using serial_returning_executor = returning_executor<Kokkos::Serial>;
+    using serial_returning_executor = ret_executor<Kokkos::Serial>;
 #endif
 
     template <typename returning_executor>
@@ -167,7 +167,7 @@ namespace hpx { namespace kokkos {
     };
 
     template <typename ExecutionSpace>
-    struct is_kokkos_executor<returning_executor<ExecutionSpace>>
+    struct is_kokkos_executor<ret_executor<ExecutionSpace>>
       : std::true_type
     {
     };
@@ -175,20 +175,20 @@ namespace hpx { namespace kokkos {
 
 namespace hpx { namespace parallel { namespace execution {
     template <typename ExecutionSpace>
-    struct is_one_way_executor<hpx::kokkos::returning_executor<ExecutionSpace>>
+    struct is_one_way_executor<hpx::kokkos::ret_executor<ExecutionSpace>>
       : std::true_type
     {
     };
 
     template <typename ExecutionSpace>
-    struct is_two_way_executor<hpx::kokkos::returning_executor<ExecutionSpace>>
+    struct is_two_way_executor<hpx::kokkos::ret_executor<ExecutionSpace>>
       : std::true_type
     {
     };
 
     template <typename ExecutionSpace>
     struct is_bulk_two_way_executor<
-        hpx::kokkos::returning_executor<ExecutionSpace>> : std::true_type
+        hpx::kokkos::ret_executor<ExecutionSpace>> : std::true_type
     {
     };
 }}}    // namespace hpx::parallel::execution

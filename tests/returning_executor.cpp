@@ -22,8 +22,8 @@ int main(int argc, char* argv[])
     {
         hpx::kokkos::detail::polling_helper helper;
 
-        hpx::kokkos::default_returning_executor exec;
-        hpx::kokkos::default_host_returning_executor host_exec;
+        hpx::kokkos::returning_executor exec;
+        hpx::kokkos::returning_host_executor host_exec;
 
         int random_arg = std::rand();
 

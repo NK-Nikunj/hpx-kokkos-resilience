@@ -1,8 +1,8 @@
 add_custom_target(tests)
 
 set(_tests
-    # async_replay_device
-    # async_replay_host
+    async_replay_device
+    async_replay_host
     returning_executor
 )
 
