@@ -42,20 +42,20 @@ namespace hpx { namespace kokkos { namespace resiliency {
 
                     if (result)
                     {
-                        return detail::hd_pair<bool, result_t>{true, result};
+                        return hpx::make_tuple(true, res);
                     }
 
-                    return detail::hd_pair<bool, result_t>{false, result};
+                    return hpx::make_tuple(false, res);
                 }
             })
-            .then([](hpx::future<detail::hd_pair<bool, result_t>> && f) {
+            .then([](hpx::future<hpx::tuple<bool, result_t>> && f) {
                 // Get pair
                 auto result = f.get();
 
-                if (!result.first)
+                if (!std::get<0>(result))
                     throw detail::replay_exception();
 
-                return result.second;
+                return std::get<1>(result);
             });
     }
 
