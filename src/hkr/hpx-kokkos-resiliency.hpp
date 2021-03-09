@@ -53,10 +53,10 @@ namespace hpx { namespace kokkos { namespace resiliency {
                 // Get pair
                 auto result = f.get();
 
-                if (!std::get<0>(result))
+                if (!hpx::get<0>(result))
                     throw detail::replay_exception();
 
-                return std::get<1>(result);
+                return hpx::get<1>(result);
             });
     }
 
