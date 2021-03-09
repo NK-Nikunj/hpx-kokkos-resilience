@@ -85,11 +85,16 @@ namespace hpx { namespace kokkos {
                     result[0] = hpx::util::invoke_fused_r<return_t>(f, ts_pack);
                 });
 
-            Kokkos::deep_copy(result_host, result);
-
             // Attach a continuation and return result
-            return fut.then(hpx::launch::sync,
-                [=](hpx::shared_future<void>&& f) { return result_host[0]; });
+            return fut.then(
+                hpx::launch::sync, [=](hpx::shared_future<void>&& f) {
+                    // Throw any error reported by f
+                    f.get();
+
+                    // Deep copy it to the host version and return the result
+                    Kokkos::deep_copy(result_host, result);
+                    return result_host[0];
+                });
         }
 
         template <typename F, typename S, typename... Ts>
@@ -130,8 +135,7 @@ namespace hpx { namespace kokkos {
     };
 
     // Define type aliases
-    using returning_executor =
-        ret_executor<Kokkos::DefaultExecutionSpace>;
+    using returning_executor = ret_executor<Kokkos::DefaultExecutionSpace>;
     using returning_host_executor =
         ret_executor<Kokkos::DefaultHostExecutionSpace>;
 
@@ -140,13 +144,11 @@ namespace hpx { namespace kokkos {
 #endif
 
 #if defined(KOKKOS_ENABLE_HIP)
-    using hip_returning_executor =
-        ret_executor<Kokkos::Experimental::HIP>;
+    using hip_returning_executor = ret_executor<Kokkos::Experimental::HIP>;
 #endif
 
 #if defined(KOKKOS_ENABLE_HPX)
-    using hpx_returning_executor =
-        ret_executor<Kokkos::Experimental::HPX>;
+    using hpx_returning_executor = ret_executor<Kokkos::Experimental::HPX>;
 #endif
 
 #if defined(KOKKOS_ENABLE_OPENMP)
@@ -167,8 +169,7 @@ namespace hpx { namespace kokkos {
     };
 
     template <typename ExecutionSpace>
-    struct is_kokkos_executor<ret_executor<ExecutionSpace>>
-      : std::true_type
+    struct is_kokkos_executor<ret_executor<ExecutionSpace>> : std::true_type
     {
     };
 }}    // namespace hpx::kokkos
@@ -187,8 +188,8 @@ namespace hpx { namespace parallel { namespace execution {
     };
 
     template <typename ExecutionSpace>
-    struct is_bulk_two_way_executor<
-        hpx::kokkos::ret_executor<ExecutionSpace>> : std::true_type
+    struct is_bulk_two_way_executor<hpx::kokkos::ret_executor<ExecutionSpace>>
+      : std::true_type
     {
     };
 }}}    // namespace hpx::parallel::execution

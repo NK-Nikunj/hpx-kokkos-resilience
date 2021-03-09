@@ -23,6 +23,14 @@ struct validate
     }
 };
 
+struct false_validate
+{
+    HPX_HOST_DEVICE constexpr bool operator()(int unused_arg) const
+    {
+        return false;
+    }
+};
+
 int main(int argc, char* argv[])
 {
     Kokkos::initialize(argc, argv);
@@ -45,6 +53,17 @@ int main(int argc, char* argv[])
             hpx::kokkos::resiliency::make_replay_executor(exec_, 3, validate{});
         hpx::shared_future<int> f2 = hpx::async(exec, test_func{}, random_arg);
         std::cout << "Returned value from replay executor:" << f2.get() << std::endl;
+
+        // Catching exceptions
+        try {
+            auto except_exec = hpx::kokkos::resiliency::make_replay_executor(exec_, 3, false_validate{});
+            hpx::shared_future<int> f3 = hpx::async(except_exec, test_func{}, random_arg);
+
+            std::cout << "Trying to return value: " << f3.get() << std::endl;
+        }
+        catch(hpx::kokkos::resiliency::detail::replay_exception& e) {
+            std::cout << e.what() << std::endl;
+        }
 
         std::cout << "Program ran correctly!" << std::endl;
     }

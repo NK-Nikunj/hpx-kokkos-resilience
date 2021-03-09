@@ -19,6 +19,7 @@ namespace hpx { namespace kokkos { namespace resiliency {
         using execution_parameters_type =
             typename hpx::parallel::execution::extract_executor_parameters<
                 BaseExecutor>::type;
+        using execution_space = typename BaseExecutor::execution_space;
 
         template <typename Result>
         using future_type =
