@@ -3,6 +3,7 @@ add_custom_target(tests)
 set(_tests
     async_replay_device
     async_replay_host
+    async_replicate_device
     async_replicate_host
     returning_executor
 )
