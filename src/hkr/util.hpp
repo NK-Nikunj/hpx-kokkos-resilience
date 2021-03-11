@@ -8,16 +8,16 @@
 
 namespace hpx { namespace kokkos { namespace resiliency { namespace detail {
 
-    struct replay_exception : public std::exception
+    struct resiliency_exception : public std::exception
     {
         std::string ex;
 
-        replay_exception()
-          : ex("Replay exception occured.")
+        resiliency_exception()
+          : ex("Resiliency based exception occured.")
         {
         }
 
-        replay_exception(std::string&& s)
+        resiliency_exception(std::string&& s)
           : ex(std::move(s))
         {
         }

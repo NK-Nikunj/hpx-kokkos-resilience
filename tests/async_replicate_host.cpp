@@ -35,21 +35,21 @@ int main(int argc, char* argv[])
 
         // Using API directly
         hpx::shared_future<int> f1 =
-            hpx::kokkos::resiliency::async_replay_validate(
+            hpx::kokkos::resiliency::async_replicate_validate(
                 exec_, 3, validate, test_func, random_arg);
         std::cout << "Returned value from direct API:" << f1.get() << std::endl;
 
         // Using async with replay executors
-        auto exec =
-            hpx::kokkos::resiliency::make_replay_executor(exec_, 3, validate);
+        auto exec = hpx::kokkos::resiliency::make_replicate_executor(
+            exec_, 3, validate);
         hpx::shared_future<int> f2 = hpx::async(exec, test_func, random_arg);
-        std::cout << "Returned value from replay executor:" << f2.get()
+        std::cout << "Returned value from replicate executor:" << f2.get()
                   << std::endl;
 
         // Catching exceptions
         try
         {
-            auto except_exec = hpx::kokkos::resiliency::make_replay_executor(
+            auto except_exec = hpx::kokkos::resiliency::make_replicate_executor(
                 exec_, 3, false_validate);
             hpx::shared_future<int> f3 =
                 hpx::async(except_exec, test_func, random_arg);

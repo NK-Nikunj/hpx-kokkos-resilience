@@ -9,4 +9,9 @@ namespace hpx { namespace kokkos { namespace resiliency {
     {
     } async_replay_validate{};
 
+    HPX_INLINE_CONSTEXPR_VARIABLE struct async_replicate_validate_t final
+      : hpx::functional::tag<async_replicate_validate_t>
+    {
+    } async_replicate_validate{};
+
 }}}    // namespace hpx::kokkos::resiliency
