@@ -33,11 +33,9 @@ namespace hpx { namespace kokkos { namespace resiliency {
                 // Ensure the value of n is greater than 0
                 HPX_ASSERT(n > 0);
 
-                result_t res{};
-
                 for (std::size_t i = 0u; i < n; ++i)
                 {
-                    res = hpx::util::invoke_fused_r<result_t>(f, tuple);
+                    result_t res = hpx::util::invoke_fused_r<result_t>(f, tuple);
 
                     bool result = pred(res);
 
@@ -47,16 +45,16 @@ namespace hpx { namespace kokkos { namespace resiliency {
                     }
                 }
 
-                return hpx::make_tuple(false, std::move(res));
+                return hpx::make_tuple(false, result_t{});
             })
             .then([](hpx::future<hpx::tuple<bool, result_t>>&& f) {
                 // Get pair
-                auto result = f.get();
+                auto&& result = f.get();
 
                 if (!hpx::get<0>(result))
                     throw detail::replay_exception();
 
-                return hpx::get<1>(result);
+                return hpx::get<1>(std::move(result));
             });
     }
 
