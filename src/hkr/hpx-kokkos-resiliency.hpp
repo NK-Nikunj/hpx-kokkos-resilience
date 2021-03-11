@@ -90,7 +90,8 @@ namespace hpx { namespace kokkos { namespace resiliency {
 
                 bool result = pred(res);
 
-                if (result)
+                // Store only the first valid result generated
+                if (result && !exec_bool[0])
                 {
                     exec_result[0] = res;
                     exec_bool[0] = true;
