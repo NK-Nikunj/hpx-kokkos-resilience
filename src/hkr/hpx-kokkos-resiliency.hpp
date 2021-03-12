@@ -8,6 +8,7 @@
 
 #include <hpx/future.hpp>
 
+#include <atomic>
 #include <exception>
 #include <memory>
 #include <tuple>
@@ -77,9 +78,9 @@ namespace hpx { namespace kokkos { namespace resiliency {
             typename std::decay<Executor>::type::execution_space>
             exec_result("execution_space_result", 1);
 
-        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> host_bool(
-            "host_bool", 1);
-        Kokkos::View<bool*,
+        Kokkos::View<std::atomic<bool>*, Kokkos::DefaultHostExecutionSpace>
+            host_bool("host_bool", 1);
+        Kokkos::View<std::atomic<bool>*,
             typename std::decay<Executor>::type::execution_space>
             exec_bool("execution_space_bool", 1);
 
@@ -91,10 +92,10 @@ namespace hpx { namespace kokkos { namespace resiliency {
                 bool result = pred(res);
 
                 // Store only the first valid result generated
-                if (result && !exec_bool[0])
+                if (result)
                 {
-                    exec_result[0] = res;
-                    exec_bool[0] = true;
+                    if (!exec_bool[0].exchange(true))
+                        exec_result[0] = std::move(res);
                 }
             });
 
