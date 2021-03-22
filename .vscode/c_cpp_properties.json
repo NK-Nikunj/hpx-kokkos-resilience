@@ -4,10 +4,9 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/opt/cuda/include/**",
-                "/home/nk/Install/hpx-debug/include/**",
-                "/home/nk/Install/kokkos-debug/include/**",
-                "/home/nk/Install/hpx-kokkos-debug/include/**"
+                "/home/nk/install/hpx/include/**",
+                "/home/nk/install/kokkos/include/**",
+                "/home/nk/install/hpx-kokkos/include/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",

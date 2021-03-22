@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.ci": "cpp",
         "array": "cpp",
         "cwchar": "cpp",
         "string": "cpp",
@@ -73,6 +74,8 @@
         "thread": "cpp",
         "cfenv": "cpp",
         "typeindex": "cpp",
-        "valarray": "cpp"
-    }
+        "valarray": "cpp",
+        "*.ipp": "cpp"
+    },
+    "editor.formatOnSave": true
 }
