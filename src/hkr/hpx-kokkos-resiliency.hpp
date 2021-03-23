@@ -75,13 +75,15 @@ namespace hpx { namespace kokkos { namespace resiliency {
         Kokkos::View<result_t*, Kokkos::DefaultHostExecutionSpace> host_result(
             "host_result", 1);
         Kokkos::View<result_t*,
-            typename std::decay<Executor>::type::execution_space>
+            typename std::decay<Executor>::type::execution_space,
+            Kokkos::MemoryTraits<Atomic>>
             exec_result("execution_space_result", 1);
 
-        Kokkos::View<std::atomic<bool>*, Kokkos::DefaultHostExecutionSpace>
-            host_bool("host_bool", 1);
-        Kokkos::View<std::atomic<bool>*,
-            typename std::decay<Executor>::type::execution_space>
+        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> host_bool(
+            "host_bool", 1);
+        Kokkos::View<bool*,
+            typename std::decay<Executor>::type::execution_space,
+            Kokkos::MemoryTraits<Atomic>>
             exec_bool("execution_space_bool", 1);
 
         hpx::for_loop(
@@ -92,10 +94,13 @@ namespace hpx { namespace kokkos { namespace resiliency {
                 bool result = pred(res);
 
                 // Store only the first valid result generated
-                if (result)
+                // The std::move(res) may be called up to n times
+                // but it is still faster than storing n results
+                // and then returning one.
+                if (result && !exec_bool[0])
                 {
-                    if (!exec_bool[0].exchange(true))
-                        exec_result[0] = std::move(res);
+                    exec_bool[0] = true;
+                    exec_result[0] = std::move(res);
                 }
             });
 

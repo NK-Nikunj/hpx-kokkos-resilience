@@ -28,38 +28,38 @@ struct universal_ans
 {
     HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns, double error) const
     {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::exponential_distribution<> dist(error);
+        // std::random_device rd;
+        // std::mt19937 gen(rd());
+        // std::exponential_distribution<> dist(error);
 
-        if (delay_ns == 0)
-            return 42;
+        // if (delay_ns == 0)
+        //     return 42;
 
-        double num = dist(gen);
-        bool error_flag = false;
+        // double num = dist(gen);
+        // bool error_flag = false;
 
-        // Probability of error occurrence is proportional to exp(-error_rate)
-        if (num > 1.0)
-        {
-            error_flag = true;
-        }
+        // // Probability of error occurrence is proportional to exp(-error_rate)
+        // if (num > 1.0)
+        // {
+        //     error_flag = true;
+        // }
 
-        std::uint64_t start = hpx::chrono::high_resolution_clock::now();
+        // std::uint64_t start = hpx::chrono::high_resolution_clock::now();
 
-        while (true)
-        {
-            // Check if we've reached the specified delay.
-            if ((hpx::chrono::high_resolution_clock::now() - start) >= delay_ns)
-            {
-                // Re-run the thread if the thread was meant to re-run
-                if (error_flag)
-                    throw vogon_exception();
-                // No error has to occur with this thread, simply break the loop
-                // after execution is done for the desired time
-                else
-                    break;
-            }
-        }
+        // while (true)
+        // {
+        //     // Check if we've reached the specified delay.
+        //     if ((hpx::chrono::high_resolution_clock::now() - start) >= delay_ns)
+        //     {
+        //         // Re-run the thread if the thread was meant to re-run
+        //         if (error_flag)
+        //             throw vogon_exception();
+        //         // No error has to occur with this thread, simply break the loop
+        //         // after execution is done for the desired time
+        //         else
+        //             break;
+        //     }
+        // }
 
         return 42;
     }
