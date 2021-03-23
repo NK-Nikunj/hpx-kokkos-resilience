@@ -94,7 +94,7 @@ namespace hpx { namespace kokkos { namespace resiliency {
                 // Store only the first valid result generated
                 if (result)
                 {
-                    if (!Kokkos::atomic_exchange(exec_bool[0], true))
+                    if (!Kokkos::atomic_exchange(&exec_bool[0], true))
                         exec_result[0] = std::move(res);
                 }
             });

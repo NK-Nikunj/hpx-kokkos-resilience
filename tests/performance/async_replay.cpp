@@ -1,5 +1,7 @@
 #include <hpx/kokkos.hpp>
 
+#include <Kokkos_Random.hpp>
+
 #include <hpx/kokkos/detail/polling_helper.hpp>
 #include <hkr/executor/returning-executor.hpp>
 #include <hkr/hpx-kokkos-resiliency-executor.hpp>
@@ -26,41 +28,43 @@ struct validate
 
 struct universal_ans
 {
-    HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns, double error) const
+    HPX_HOST_DEVICE int operator()(std::uint64_t delay_s, std::uint64_t error,
+        Kokkos::Random_XorShift64_Pool<> rand_pool) const
     {
-        // std::random_device rd;
-        // std::mt19937 gen(rd());
-        // std::exponential_distribution<> dist(error);
+        typename Kokkos::Random_XorShift64_Pool<>::generator_type rand_gen =
+            rand_pool.get_state();
 
-        // if (delay_ns == 0)
-        //     return 42;
+        if (delay_s == 0)
+            return 42;
 
-        // double num = dist(gen);
-        // bool error_flag = false;
+        std::uint64_t num = rand_gen.urand64() % 100;
+        bool error_flag = false;
 
-        // // Probability of error occurrence is proportional to exp(-error_rate)
-        // if (num > 1.0)
-        // {
-        //     error_flag = true;
-        // }
+        // Probability of error occurrence is proportional to error rate
+        if (num < error)
+        {
+            error_flag = true;
+        }
 
-        // std::uint64_t start = hpx::chrono::high_resolution_clock::now();
+        Kokkos::Timer timer;
 
-        // while (true)
-        // {
-        //     // Check if we've reached the specified delay.
-        //     if ((hpx::chrono::high_resolution_clock::now() - start) >= delay_ns)
-        //     {
-        //         // Re-run the thread if the thread was meant to re-run
-        //         if (error_flag)
-        //             throw vogon_exception();
-        //         // No error has to occur with this thread, simply break the loop
-        //         // after execution is done for the desired time
-        //         else
-        //             break;
-        //     }
-        // }
+        while (true)
+        {
+            // Check if we've reached the specified delay
+            if ((timer.seconds() >= delay_s))
+            {
+                // Re-run the thread if the thread was meant to re-run
+                if (error_flag)
+                    throw vogon_exception();
 
+                // No error has to occur with this thread, simply break the loop
+                // after execution is done for the desired time
+                else
+                    break;
+            }
+        }
+
+        rand_pool.free_state(rand_gen);
         return 42;
     }
 };
@@ -82,10 +86,11 @@ int main(int argc, char* argv[])
         desc.add_options()("n-value",
             bpo::value<std::uint64_t>()->default_value(10),
             "Number of repeat launches for async replay.");
-        desc.add_options()("error-rate", bpo::value<double>()->default_value(2),
+        desc.add_options()("error-rate",
+            bpo::value<std::uint64_t>()->default_value(2),
             "Average rate at which error is likely to occur.");
         desc.add_options()("exec-time",
-            bpo::value<std::uint64_t>()->default_value(1000),
+            bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
@@ -96,7 +101,7 @@ int main(int argc, char* argv[])
 
         // Start application work
         std::uint64_t n = vm["n-value"].as<std::uint64_t>();
-        double error = vm["error-rate"].as<double>();
+        std::uint64_t error = vm["error-rate"].as<std::uint64_t>();
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
 
         {
@@ -105,13 +110,17 @@ int main(int argc, char* argv[])
             std::vector<hpx::shared_future<int>> vect;
             vect.reserve(num_iterations);
 
+            // Random number generator
+            Kokkos::Random_XorShift64_Pool<> rand_pool(std::time(nullptr));
+
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
                 hpx::shared_future<int> f =
                     hpx::kokkos::resiliency::async_replay_validate(exec_, n,
-                        validate{}, universal_ans{}, delay * 1000, error);
+                        validate{}, universal_ans{}, delay / 1e6, error,
+                        rand_pool);
 
                 vect.push_back(std::move(f));
             }
@@ -141,13 +150,17 @@ int main(int argc, char* argv[])
             std::vector<hpx::shared_future<int>> vect;
             vect.reserve(num_iterations);
 
+            // Random number generator
+            Kokkos::Random_XorShift64_Pool<> rand_pool(std::time(nullptr));
+
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
                 hpx::shared_future<int> f =
                     hpx::kokkos::resiliency::async_replay_validate(host_exec_,
-                        n, validate{}, universal_ans{}, delay * 1000, error);
+                        n, validate{}, universal_ans{}, delay / 1e6, error,
+                        rand_pool);
 
                 vect.push_back(std::move(f));
             }

@@ -3,6 +3,7 @@ add_custom_target(performance)
 set(_tests
     async_replay
     async_replicate
+    plain_async
 )
 
 foreach(_test ${_tests})

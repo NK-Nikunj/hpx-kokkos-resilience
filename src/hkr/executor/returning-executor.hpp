@@ -90,7 +90,6 @@ namespace hpx { namespace kokkos {
                 hpx::launch::sync, [=](hpx::shared_future<void>&& f) {
                     // Throw any error reported by f
                     f.get();
-                    std::cout << "Here we are" << std::endl;
 
                     // Deep copy it to the host version and return the result
                     Kokkos::deep_copy(result_host, result);
