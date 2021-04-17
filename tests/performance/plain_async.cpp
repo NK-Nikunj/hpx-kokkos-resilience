@@ -14,11 +14,36 @@
 // Global variables
 constexpr int num_iterations = 1000;
 
-struct universal_ans
+struct universal_ans_device
 {
-    HPX_HOST_DEVICE int operator()(std::uint64_t delay_s) const
+    HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns) const
     {
-        if (delay_s == 0)
+        if (delay_ns == 0)
+            return 42;
+
+        // Get current time from Nvidia GPU register
+        std::uint64_t cur;
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(cur));
+
+        while (true)
+        {
+            std::uint64_t now;
+            asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(now));
+
+            // Check if we've reached the specified delay
+            if (now - cur >= delay_ns)
+                break;
+        }
+
+        return 42;
+    }
+};
+
+struct universal_ans_host
+{
+    HPX_HOST_DEVICE int operator()(std::uint64_t delay_us) const
+    {
+        if (delay_us == 0)
             return 42;
 
         Kokkos::Timer timer;
@@ -26,10 +51,8 @@ struct universal_ans
         while (true)
         {
             // Check if we've reached the specified delay
-            if ((timer.seconds() >= delay_s))
-            {
+            if ((timer.seconds() * 1e6 >= delay_us))
                 break;
-            }
         }
 
         return 42;
@@ -42,9 +65,6 @@ int main(int argc, char* argv[])
 
     {
         hpx::kokkos::detail::polling_helper helper;
-
-        hpx::kokkos::returning_executor exec_;
-        hpx::kokkos::returning_host_executor host_exec_;
 
         namespace bpo = boost::program_options;
 
@@ -66,15 +86,17 @@ int main(int argc, char* argv[])
         {
             std::cout << "Starting plain async" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::async(exec_, universal_ans{}, delay / 1e6);
+                hpx::future<int> f = hpx::async(
+                    hpx::kokkos::returning_executor{
+                        hpx::kokkos::execution_space_mode::independent},
+                    universal_ans_device{}, delay * 1e3);
 
                 vect.push_back(std::move(f));
             }
@@ -92,15 +114,17 @@ int main(int argc, char* argv[])
         {
             std::cout << "Starting plain async" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::async(host_exec_, universal_ans{}, delay / 1e6);
+                hpx::future<int> f = hpx::async(
+                    hpx::kokkos::returning_host_executor{
+                        hpx::kokkos::execution_space_mode::independent},
+                    universal_ans_host{}, delay);
 
                 vect.push_back(std::move(f));
             }

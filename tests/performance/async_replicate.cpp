@@ -26,35 +26,61 @@ struct validate
     }
 };
 
-struct universal_ans
+struct universal_ans_device
 {
-    HPX_HOST_DEVICE int operator()(std::uint64_t delay_s, std::uint64_t error,
-        Kokkos::Random_XorShift64_Pool<> rand_pool) const
+    HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns,
+        Kokkos::View<bool*, Kokkos::DefaultExecutionSpace> error_device,
+        int num_iterations) const
     {
-        typename Kokkos::Random_XorShift64_Pool<>::generator_type rand_gen =
-            rand_pool.get_state();
-
-        if (delay_s == 0)
+        if (delay_ns == 0)
             return 42;
 
-        std::uint64_t num = rand_gen.urand64() % 100;
-        bool error_flag = false;
+        // Get current time from Nvidia GPU register
+        std::uint64_t cur;
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(cur));
 
-        // Probability of error occurrence is proportional to error rate
-        if (num < error)
+        while (true)
         {
-            error_flag = true;
+            std::uint64_t now;
+            asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(now));
+
+            // Check if we've reached the specified delay
+            if (now - cur >= delay_ns)
+            {
+                // Re-run the thread if the thread was meant to re-run
+                if (error_device[cur % num_iterations])
+                    return 41;
+
+                // No error has to occur with this thread, simply break the loop
+                // after execution is done for the desired time
+                else
+                    break;
+            }
         }
+
+        return 42;
+    }
+};
+
+struct universal_ans_host
+{
+    HPX_HOST_DEVICE int operator()(std::uint64_t delay_us,
+        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> error_host,
+        int num_iterations) const
+    {
+        if (delay_us == 0)
+            return 42;
 
         Kokkos::Timer timer;
 
         while (true)
         {
             // Check if we've reached the specified delay
-            if ((timer.seconds() >= delay_s))
+            if ((timer.seconds() * 1e6 >= delay_us))
             {
                 // Re-run the thread if the thread was meant to re-run
-                if (error_flag)
+                if (error_host[static_cast<int>(timer.seconds() * 1e6) %
+                        num_iterations])
                     throw vogon_exception();
 
                 // No error has to occur with this thread, simply break the loop
@@ -64,7 +90,6 @@ struct universal_ans
             }
         }
 
-        rand_pool.free_state(rand_gen);
         return 42;
     }
 };
@@ -74,6 +99,10 @@ int main(int argc, char* argv[])
     Kokkos::initialize(argc, argv);
 
     {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<std::size_t> dist(1, 100);
+
         hpx::kokkos::detail::polling_helper helper;
 
         hpx::kokkos::returning_executor exec_;
@@ -90,7 +119,7 @@ int main(int argc, char* argv[])
             bpo::value<std::uint64_t>()->default_value(2),
             "Average rate at which error is likely to occur.");
         desc.add_options()("exec-time",
-            bpo::value<std::uint64_t>()->default_value(100),
+            bpo::value<std::uint64_t>()->default_value(1000),
             "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
@@ -104,23 +133,32 @@ int main(int argc, char* argv[])
         std::uint64_t error = vm["error-rate"].as<std::uint64_t>();
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
 
+        Kokkos::View<bool*, Kokkos::DefaultExecutionSpace> error_device(
+            "Error_device", num_iterations);
+        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> error_host(
+            "Error_host", num_iterations);
+
+        hpx::for_loop(0, num_iterations,
+            [&](int i) { error_host[i] = (dist(gen) < error ? true : false); });
+
+        Kokkos::deep_copy(error_host, error_device);
+
         {
             std::cout << "Starting async replicate" << std::endl;
 
             std::vector<hpx::shared_future<int>> vect;
             vect.reserve(num_iterations);
 
-            // Random number generator
-            Kokkos::Random_XorShift64_Pool<> rand_pool(std::time(nullptr));
-
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
+                bool err = (dist(gen) < error ? true : false);
+
                 hpx::shared_future<int> f =
                     hpx::kokkos::resiliency::async_replicate_validate(exec_, n,
-                        validate{}, universal_ans{}, delay / 1e6, error,
-                        rand_pool);
+                        validate{}, universal_ans_device{}, delay * 1e3,
+                        error_device, num_iterations);
 
                 vect.push_back(std::move(f));
             }
@@ -150,17 +188,16 @@ int main(int argc, char* argv[])
             std::vector<hpx::shared_future<int>> vect;
             vect.reserve(num_iterations);
 
-            // Random number generator
-            Kokkos::Random_XorShift64_Pool<> rand_pool(std::time(nullptr));
-
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
+                bool err = (dist(gen) < error ? true : false);
+
                 hpx::shared_future<int> f =
                     hpx::kokkos::resiliency::async_replicate_validate(
-                        host_exec_, n, validate{}, universal_ans{}, delay / 1e6,
-                        error, rand_pool);
+                        host_exec_, n, validate{}, universal_ans_host{}, delay,
+                        error_host, num_iterations);
 
                 vect.push_back(std::move(f));
             }

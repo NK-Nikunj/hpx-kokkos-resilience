@@ -6,6 +6,8 @@
 
 #include <hkr/hpx-kokkos-resiliency-cpos.hpp>
 
+#include <boost/type_index.hpp>
+
 namespace hpx { namespace kokkos { namespace resiliency {
 
     template <typename BaseExecutor, typename Validate>
@@ -49,11 +51,44 @@ namespace hpx { namespace kokkos { namespace resiliency {
             return *this;
         }
 
+        execution_space instance() const
+        {
+            return exec_.instance();
+        }
+
         template <typename F, typename... Ts>
         decltype(auto) async_execute(F&& f, Ts&&... ts)
         {
             return async_replay_validate(exec_, replay_count_, validator_,
                 std::forward<F>(f), std::forward<Ts>(ts)...);
+        }
+
+        template <typename F, typename S, typename... Ts>
+        decltype(auto) bulk_async_execute(F&& f, S const& s, Ts&&... ts)
+        {
+            HPX_KOKKOS_DETAIL_LOG("replay_bulk_async_execute");
+
+            auto b = hpx::util::begin(s);
+
+            using result_t = typename hpx::util::detail::invoke_deferred_result<
+                decltype(f.f_.f_), decltype(hpx::get<0>(*b)), Ts...>::type;
+
+            std::cout << boost::typeindex::type_id<result_t>().pretty_name()
+                      << std::endl;
+
+            std::vector<hpx::future<void>> result;
+            for (auto const& elem : s)
+            {
+                // result.push_back(hpx::async([&]() {
+                //     async_execute(
+                //         std::forward<F>(f), elem, std::forward<Ts>(ts)...)
+                //         .get();
+                // }));
+
+                result.push_back(hpx::make_ready_future());
+            }
+
+            return result;
         }
 
     private:
@@ -103,11 +138,36 @@ namespace hpx { namespace kokkos { namespace resiliency {
             return *this;
         }
 
+        execution_space instance() const
+        {
+            return exec_.instance();
+        }
+
         template <typename F, typename... Ts>
         decltype(auto) async_execute(F&& f, Ts&&... ts)
         {
             return async_replicate_validate(exec_, replicate_count_, validator_,
                 std::forward<F>(f), std::forward<Ts>(ts)...);
+        }
+
+        template <typename F, typename S, typename... Ts>
+        decltype(auto) bulk_async_execute(F&& f, S const& s, Ts&&... ts)
+        {
+            HPX_KOKKOS_DETAIL_LOG("replicate_bulk_async_execute");
+
+            auto b = hpx::util::begin(s);
+
+            using result_t =
+                typename hpx::util::invoke_result<F, decltype(*b), Ts...>::type;
+
+            std::vector<hpx::shared_future<result_t>> result;
+            for (auto const& elem : s)
+            {
+                result.push_back(this->async_execute(
+                    std::forward<F>(f), elem, std::forward<Ts>(ts)...));
+            }
+
+            return result;
         }
 
     private:
@@ -139,6 +199,22 @@ namespace hpx { namespace kokkos { namespace resiliency {
 
 }}}    // namespace hpx::kokkos::resiliency
 
+namespace hpx { namespace kokkos {
+    template <typename BaseExecutor, typename Validator>
+    struct is_kokkos_executor<
+        hpx::kokkos::resiliency::replay_executor<BaseExecutor, Validator>>
+      : is_kokkos_executor<BaseExecutor>
+    {
+    };
+
+    template <typename BaseExecutor, typename Validator>
+    struct is_kokkos_executor<
+        hpx::kokkos::resiliency::replicate_executor<BaseExecutor, Validator>>
+      : is_kokkos_executor<BaseExecutor>
+    {
+    };
+}}    // namespace hpx::kokkos
+
 namespace hpx { namespace parallel { namespace execution {
 
     template <typename BaseExecutor, typename Validator>
@@ -150,6 +226,20 @@ namespace hpx { namespace parallel { namespace execution {
 
     template <typename BaseExecutor, typename Validator>
     struct is_two_way_executor<
+        hpx::kokkos::resiliency::replicate_executor<BaseExecutor, Validator>>
+      : std::true_type
+    {
+    };
+
+    template <typename BaseExecutor, typename Validator>
+    struct is_bulk_two_way_executor<
+        hpx::kokkos::resiliency::replay_executor<BaseExecutor, Validator>>
+      : std::true_type
+    {
+    };
+
+    template <typename BaseExecutor, typename Validator>
+    struct is_bulk_two_way_executor<
         hpx::kokkos::resiliency::replicate_executor<BaseExecutor, Validator>>
       : std::true_type
     {

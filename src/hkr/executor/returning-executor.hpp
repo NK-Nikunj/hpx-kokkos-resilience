@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <hpx/kokkos.hpp>
+
 #include <hpx/kokkos/deep_copy.hpp>
 #include <hpx/kokkos/detail/logging.hpp>
 #include <hpx/kokkos/kokkos_algorithms.hpp>

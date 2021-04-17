@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 
         hpx::kokkos::returning_executor exec_;
 
-        int random_arg = std::rand();
+        int random_arg = 1e9;
 
         // Using API directly
         hpx::shared_future<int> f1 =

@@ -6,6 +6,7 @@ set(_tests
     async_replicate_device
     async_replicate_host
     returning_executor
+    bulk_async
 )
 
 foreach(_test ${_tests})

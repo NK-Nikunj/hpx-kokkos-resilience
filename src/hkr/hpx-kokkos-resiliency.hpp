@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Kokkos_Core.hpp>
+
 #include <hpx/kokkos.hpp>
 
 #include <hkr/hpx-kokkos-resiliency-cpos.hpp>
@@ -18,7 +20,7 @@ namespace hpx { namespace kokkos { namespace resiliency {
     template <typename Executor, typename Pred, typename F, typename... Ts,
         HPX_CONCEPT_REQUIRES_(
             hpx::traits::is_two_way_executor<Executor>::value)>
-    hpx::shared_future<
+    hpx::future<
         typename hpx::util::detail::invoke_deferred_result<F, Ts...>::type>
     tag_invoke(async_replay_validate_t, Executor&& exec, std::size_t n,
         Pred&& pred, F&& f, Ts&&... ts)
@@ -28,8 +30,11 @@ namespace hpx { namespace kokkos { namespace resiliency {
             typename hpx::util::detail::invoke_deferred_result<F, Ts...>::type;
         auto tuple = hpx::make_tuple(std::forward<Ts>(ts)...);
 
+        using independent_exec = typename std::decay<Executor>::type;
+
         return hpx::async(
-            exec,
+            independent_exec{hpx::kokkos::execution_space_mode::independent},
+            // exec,
             KOKKOS_LAMBDA() {
                 // Ensure the value of n is greater than 0
                 HPX_ASSERT(n > 0);
@@ -62,7 +67,7 @@ namespace hpx { namespace kokkos { namespace resiliency {
     template <typename Executor, typename Pred, typename F, typename... Ts,
         HPX_CONCEPT_REQUIRES_(
             hpx::traits::is_two_way_executor<Executor>::value)>
-    hpx::shared_future<
+    hpx::future<
         typename hpx::util::detail::invoke_deferred_result<F, Ts...>::type>
     tag_invoke(async_replicate_validate_t, Executor&& exec, std::size_t n,
         Pred&& pred, F&& f, Ts&&... ts)
