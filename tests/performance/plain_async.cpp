@@ -11,9 +11,6 @@
 
 #include <random>
 
-// Global variables
-constexpr int num_iterations = 1000;
-
 struct universal_ans_device
 {
     HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns) const
@@ -73,6 +70,9 @@ int main(int argc, char* argv[])
         desc.add_options()("exec-time",
             bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
+        desc.add_options()("iterations",
+            bpo::value<std::uint64_t>()->default_value(10000),
+            "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
 
@@ -82,6 +82,7 @@ int main(int argc, char* argv[])
 
         // Start application work
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
+        std::uint64_t num_iterations = vm["iterations"].as<std::uint64_t>();
 
         {
             std::cout << "Starting plain async" << std::endl;

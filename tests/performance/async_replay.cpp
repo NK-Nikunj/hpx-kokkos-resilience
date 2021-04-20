@@ -9,9 +9,6 @@
 
 #include <random>
 
-// Global variables
-constexpr int num_iterations = 1000;
-
 struct vogon_exception : std::exception
 {
 };
@@ -119,6 +116,9 @@ int main(int argc, char* argv[])
         desc.add_options()("exec-time",
             bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
+        desc.add_options()("iterations",
+            bpo::value<std::uint64_t>()->default_value(10000),
+            "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
 
@@ -130,6 +130,7 @@ int main(int argc, char* argv[])
         std::uint64_t n = vm["n-value"].as<std::uint64_t>();
         std::uint64_t error = vm["error-rate"].as<std::uint64_t>();
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
+        std::uint64_t num_iterations = vm["iterations"].as<std::uint64_t>();
 
         Kokkos::View<bool*, Kokkos::DefaultExecutionSpace> error_device(
             "Error_device", num_iterations);
