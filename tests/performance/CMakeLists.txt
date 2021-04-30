@@ -4,6 +4,7 @@ set(_tests
     async_replay
     async_replicate
     plain_async
+    perf_comp
     # stencil
 )
 
