@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
             "Time in us taken by a thread to execute before it terminates.");
         desc.add_options()("iterations",
             bpo::value<std::uint64_t>()->default_value(10000),
-            "Time in us taken by a thread to execute before it terminates.");
+            "Number of tasks to launch.");
 
         bpo::variables_map vm;
 

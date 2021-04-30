@@ -4,6 +4,7 @@ set(_tests
     async_replay
     async_replicate
     plain_async
+    kokkos_parfor_vs_hpxkokkos
     perf_comp
     # stencil
 )
