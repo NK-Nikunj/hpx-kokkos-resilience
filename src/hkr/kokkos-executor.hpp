@@ -3,6 +3,7 @@
 #include <hpx/kokkos.hpp>
 #include <Kokkos_Core.hpp>
 
+#include <hkr/traits.hpp>
 #include <hkr/util.hpp>
 
 #include <type_traits>
@@ -18,6 +19,10 @@ namespace hpx {
     public:
         using execution_space = ExecutionSpace;
         using execution_category = hpx::execution::parallel_execution_tag;
+
+        // Used for Views
+        using memory_space = typename hpx::kokkos::traits::to_memory_space<
+            execution_space>::type;
 
         template <typename F>
         explicit replay_executor(
@@ -45,12 +50,12 @@ namespace hpx {
                     func = std::forward<F>(f),
                     ts_pack = hpx::make_tuple(std::forward<Ts>(ts)...)]() {
                     // Initialize result to be returned
-                    Kokkos::View<return_t*, execution_space> exec_result(
+                    Kokkos::View<return_t*, memory_space> exec_result(
                         "execution_space_result", 1);
                     Kokkos::View<return_t*, Kokkos::DefaultHostExecutionSpace>
                         host_result("host_result", 1);
 
-                    Kokkos::View<bool*, execution_space> exec_bool(
+                    Kokkos::View<bool*, memory_space> exec_bool(
                         "execution_space_bool", 1);
                     Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace>
                         host_bool("host_bool", 1);

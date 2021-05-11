@@ -72,6 +72,10 @@ namespace hpx { namespace kokkos { namespace resiliency {
     tag_invoke(async_replicate_validate_t, Executor&& exec, std::size_t n,
         Pred&& pred, F&& f, Ts&&... ts)
     {
+        // For using views
+        using memory_space = typename hpx::kokkos::traits::to_memory_space<
+            typename std::decay<Executor>::type::execution_space>::type;
+
         // Generate necessary components
         using result_t =
             typename hpx::util::detail::invoke_deferred_result<F, Ts...>::type;
@@ -79,15 +83,12 @@ namespace hpx { namespace kokkos { namespace resiliency {
 
         Kokkos::View<result_t*, Kokkos::DefaultHostExecutionSpace> host_result(
             "host_result", 1);
-        Kokkos::View<result_t*,
-            typename std::decay<Executor>::type::execution_space>
-            exec_result("execution_space_result", 1);
+        Kokkos::View<result_t*, memory_space> exec_result(
+            "execution_space_result", 1);
 
         Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> host_bool(
             "host_bool", 1);
-        Kokkos::View<bool*,
-            typename std::decay<Executor>::type::execution_space>
-            exec_bool("execution_space_bool", 1);
+        Kokkos::View<bool*, memory_space> exec_bool("execution_space_bool", 1);
 
         hpx::for_loop(
             hpx::kokkos::kok.on(exec).label("replicate_validate"), 0u, n,
