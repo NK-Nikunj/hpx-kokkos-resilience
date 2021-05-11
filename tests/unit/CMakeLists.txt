@@ -5,6 +5,7 @@ set(_tests
     async_replay_host
     async_replicate_device
     async_replicate_host
+    experimental_replay
     returning_executor
     bulk_async
 )

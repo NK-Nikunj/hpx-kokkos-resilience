@@ -3,6 +3,7 @@ add_custom_target(performance)
 set(_tests
     async_replay
     async_replicate
+    experimental_replay
     plain_async
     # stencil
 )
