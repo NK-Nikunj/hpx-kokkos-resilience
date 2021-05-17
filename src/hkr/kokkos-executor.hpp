@@ -88,7 +88,7 @@ namespace hpx {
                     Kokkos::deep_copy(host_bool, exec_bool);
 
                     if (host_bool[0])
-                        return hpx::make_ready_future(host_result[0]);
+                        return host_result[0];
 
                     throw hpx::kokkos::resiliency::detail::resiliency_exception(
                         "Replay Execption Occured.");
