@@ -39,7 +39,7 @@ namespace hpx {
         }
 
         template <typename F, typename... Ts>
-        decltype(auto) async_execute(F&& f, Ts&&... ts)
+        decltype(auto) device_execution(F&& f, Ts&&... ts)
         {
             using return_t =
                 typename hpx::util::detail::invoke_deferred_result<F,
@@ -93,6 +93,68 @@ namespace hpx {
                     throw hpx::kokkos::resiliency::detail::resiliency_exception(
                         "Replay Execption Occured.");
                 });
+        }
+
+        template <typename F, typename... Ts>
+        decltype(auto) host_execution(F&& f, Ts&&... ts)
+        {
+            using return_t =
+                typename hpx::util::detail::invoke_deferred_result<F,
+                    Ts...>::type;
+
+            return hpx::async(
+                [&inst = inst_, n = replay_count_, pred = validator_,
+                    func = std::forward<F>(f),
+                    ts_pack = hpx::make_tuple(std::forward<Ts>(ts)...)]() {
+                    // Initialize result to be returned
+                    Kokkos::View<return_t*, memory_space> exec_result(
+                        "execution_space_result", 1);
+
+                    Kokkos::View<bool*, memory_space> exec_bool(
+                        "execution_space_bool", 1);
+
+                    Kokkos::parallel_for(
+                        "async_replay",
+                        Kokkos::RangePolicy<execution_space>(inst, 0, 1),
+                        KOKKOS_LAMBDA(int) {
+                            for (std::size_t i = 0; i < n; ++i)
+                            {
+                                return_t res =
+                                    hpx::util::invoke_fused_r<return_t>(
+                                        func, ts_pack);
+
+                                bool valid = pred(res);
+
+                                if (valid)
+                                {
+                                    exec_result[0] = res;
+                                    exec_bool[0] = true;
+
+                                    break;
+                                }
+                            }
+                        });
+                    // Let parallel_for run to completion
+                    inst.fence();
+
+                    if (exec_result[0])
+                        return exec_result[0];
+
+                    throw hpx::kokkos::resiliency::detail::resiliency_exception(
+                        "Replay Execption Occured.");
+                });
+        }
+
+        template <typename F, typename... Ts>
+        decltype(auto) async_execute(F&& f, Ts&&... ts)
+        {
+            if constexpr (hpx::kokkos::traits::is_device_execution_space<
+                              execution_space>::value)
+                return device_execution(
+                    std::forward<F>(f), std::forward<Ts>(ts)...);
+            else
+                return host_execution(
+                    std::forward<F>(f), std::forward<Ts>(ts)...);
         }
 
     private:

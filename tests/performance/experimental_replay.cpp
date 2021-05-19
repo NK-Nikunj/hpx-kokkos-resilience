@@ -116,7 +116,7 @@ int main(int argc, char* argv[])
             bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
         desc.add_options()("iterations",
-            bpo::value<std::uint64_t>()->default_value(10000),
+            bpo::value<std::uint64_t>()->default_value(1000),
             "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
