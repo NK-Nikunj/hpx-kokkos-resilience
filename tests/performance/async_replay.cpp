@@ -21,6 +21,7 @@ struct validate
     }
 };
 
+#if defined(KOKKOS_ENABLE_CUDA)
 struct universal_ans_device
 {
     HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns,
@@ -56,6 +57,7 @@ struct universal_ans_device
         return 42;
     }
 };
+#endif
 
 struct universal_ans_host
 {
@@ -142,6 +144,7 @@ int main(int argc, char* argv[])
 
         Kokkos::deep_copy(error_host, error_device);
 
+#if defined(KOKKOS_ENABLE_CUDA)
         {
             std::cout << "Starting async replay" << std::endl;
 
@@ -178,6 +181,7 @@ int main(int argc, char* argv[])
             hpx::util::format_to(
                 std::cout, "Async replay execution time = {1}\n", elapsed);
         }
+#endif
 
         {
             std::cout << "Starting async replay" << std::endl;

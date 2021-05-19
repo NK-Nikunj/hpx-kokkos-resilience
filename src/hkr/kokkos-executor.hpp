@@ -20,10 +20,6 @@ namespace hpx {
         using execution_space = ExecutionSpace;
         using execution_category = hpx::execution::parallel_execution_tag;
 
-        // Used for Views
-        using memory_space = typename hpx::kokkos::traits::to_memory_space<
-            execution_space>::type;
-
         template <typename F>
         explicit replay_executor(
             execution_space const& instance, std::size_t n, F&& f)
@@ -50,15 +46,15 @@ namespace hpx {
                     func = std::forward<F>(f),
                     ts_pack = hpx::make_tuple(std::forward<Ts>(ts)...)]() {
                     // Initialize result to be returned
-                    Kokkos::View<return_t*, memory_space> exec_result(
-                        "execution_space_result", 1);
+                    Kokkos::View<return_t*, execution_space> exec_result(
+                        "device_execution_space_result", 1);
                     Kokkos::View<return_t*, Kokkos::DefaultHostExecutionSpace>
-                        host_result("host_result", 1);
+                        host_result("device_host_result", 1);
 
-                    Kokkos::View<bool*, memory_space> exec_bool(
-                        "execution_space_bool", 1);
+                    Kokkos::View<bool*, execution_space> exec_bool(
+                        "device_execution_space_bool", 1);
                     Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace>
-                        host_bool("host_bool", 1);
+                        host_bool("device_host_bool", 1);
 
                     Kokkos::parallel_for(
                         "async_replay",
@@ -88,7 +84,7 @@ namespace hpx {
                     Kokkos::deep_copy(host_bool, exec_bool);
 
                     if (host_bool[0])
-                        return host_result[0];
+                        return std::move(host_result[0]);
 
                     throw hpx::kokkos::resiliency::detail::resiliency_exception(
                         "Replay Execption Occured.");
@@ -107,11 +103,11 @@ namespace hpx {
                     func = std::forward<F>(f),
                     ts_pack = hpx::make_tuple(std::forward<Ts>(ts)...)]() {
                     // Initialize result to be returned
-                    Kokkos::View<return_t*, memory_space> exec_result(
-                        "execution_space_result", 1);
+                    Kokkos::View<return_t*, execution_space> exec_result(
+                        "host_execution_space_result", 1);
 
-                    Kokkos::View<bool*, memory_space> exec_bool(
-                        "execution_space_bool", 1);
+                    Kokkos::View<bool*, execution_space> exec_bool(
+                        "host_execution_space_bool", 1);
 
                     Kokkos::parallel_for(
                         "async_replay",
@@ -137,8 +133,8 @@ namespace hpx {
                     // Let parallel_for run to completion
                     inst.fence();
 
-                    if (exec_result[0])
-                        return exec_result[0];
+                    if (exec_bool[0])
+                        return std::move(exec_result[0]);
 
                     throw hpx::kokkos::resiliency::detail::resiliency_exception(
                         "Replay Execption Occured.");

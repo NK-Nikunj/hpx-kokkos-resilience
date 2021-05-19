@@ -11,6 +11,7 @@
 
 #include <random>
 
+#if defined(KOKKOS_ENABLE_CUDA)
 struct universal_ans_device
 {
     HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns) const
@@ -35,6 +36,7 @@ struct universal_ans_device
         return 42;
     }
 };
+#endif
 
 struct universal_ans_host
 {
@@ -84,6 +86,7 @@ int main(int argc, char* argv[])
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
         std::uint64_t num_iterations = vm["iterations"].as<std::uint64_t>();
 
+#if defined(KOKKOS_ENABLE_CUDA)
         {
             std::cout << "Starting plain async" << std::endl;
 
@@ -111,6 +114,7 @@ int main(int argc, char* argv[])
             hpx::util::format_to(
                 std::cout, "Plain Async execution time = {1}\n", elapsed);
         }
+#endif
 
         {
             std::cout << "Starting plain async" << std::endl;

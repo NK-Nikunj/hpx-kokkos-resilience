@@ -38,7 +38,7 @@ int main(int argc, char* argv[])
         int random_arg = std::rand();
 
         Kokkos::Experimental::HPX host_inst{};
-        Kokkos::Cuda device_inst{};
+        Kokkos::DefaultExecutionSpace device_inst{};
 
         // Create replay executor
         auto exec = hpx::kokkos::experimental::resiliency::make_replay_executor(
