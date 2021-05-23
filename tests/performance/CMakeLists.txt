@@ -4,6 +4,7 @@ set(_tests
     async_replay
     async_replicate
     experimental_replay
+    experimental_replicate
     plain_async
     # stencil
 )

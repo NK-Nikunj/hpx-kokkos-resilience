@@ -152,7 +152,7 @@ int main(int argc, char* argv[])
 
             Kokkos::Cuda device_inst{};
             auto device_exec =
-                hpx::kokkos::experimental::resiliency::make_replay_executor(
+                hpx::kokkos::experimental::resiliency::make_replicate_executor(
                     device_inst, n, validate{});
 
             hpx::chrono::high_resolution_timer t;
