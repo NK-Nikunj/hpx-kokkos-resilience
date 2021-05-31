@@ -185,6 +185,46 @@ int main(int argc, char* argv[])
                 std::cout, "Async replay execution time = {1}\n", elapsed);
         }
 #endif
+
+        {
+            std::cout << "Starting async replay" << std::endl;
+
+            std::vector<hpx::future<int>> vect;
+            vect.reserve(num_iterations);
+
+            Kokkos::Experimental::HPX host_inst{};
+            auto host_exec =
+                hpx::kokkos::experimental::resiliency::make_replicate_executor(
+                    host_inst, n, validate{});
+
+            hpx::chrono::high_resolution_timer t;
+
+            for (int i = 0; i < num_iterations; ++i)
+            {
+                hpx::future<int> f = hpx::async(host_exec, universal_ans_host{},
+                    delay, error_host, num_iterations);
+
+                vect.emplace_back(std::move(f));
+            }
+
+            try
+            {
+                for (int i = 0; i < num_iterations; ++i)
+                {
+                    vect[i].get();
+                }
+            }
+            catch (...)
+            {
+                std::cout << "Number of repeat launches were not enough to get "
+                             "past the injected error levels"
+                          << std::endl;
+            }
+
+            double elapsed = t.elapsed();
+            hpx::util::format_to(
+                std::cout, "Async replay execution time = {1}\n", elapsed);
+        }
     }
 
     Kokkos::finalize();
