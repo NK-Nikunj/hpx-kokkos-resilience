@@ -6,7 +6,7 @@ set(_tests
     experimental_replay
     experimental_replicate
     plain_async
-    # stencil
+    stencil
 )
 
 foreach(_test ${_tests})
