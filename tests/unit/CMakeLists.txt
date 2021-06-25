@@ -7,6 +7,7 @@ set(_tests
     async_replicate_host
     experimental_replay
     experimental_replicate
+    kokkos_execution_space
     returning_executor
     bulk_async
 )
