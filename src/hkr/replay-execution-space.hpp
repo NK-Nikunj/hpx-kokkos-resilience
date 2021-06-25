@@ -2,6 +2,8 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <hkr/util.hpp>
+
 #include <cstdint>
 #include <exception>
 #include <type_traits>
@@ -34,7 +36,13 @@ namespace Kokkos {
                         break;
 
                     if (n == replays - 1)
+                    {
+#if defined(__CUDA_ARCH__)
+                        // Do something
+#else
                         throw std::runtime_error("Out of Replays");
+#endif
+                    }
                 }
             }
 
@@ -90,20 +98,6 @@ namespace Kokkos {
     };
 
     namespace Impl {
-
-        namespace traits {
-
-            template <typename ExecutionSpace, typename... Traits>
-            struct RangePolicyBase
-            {
-                using execution_space = ExecutionSpace;
-                using base_execution_space =
-                    typename execution_space::base_execution_space;
-                using RangePolicy =
-                    Kokkos::RangePolicy<base_execution_space, Traits...>;
-                using validator = typename execution_space::validator_type;
-            };
-        }    // namespace traits
 
         template <typename FunctorType, typename... Traits>
         class ParallelFor<FunctorType, Kokkos::RangePolicy<Traits...>,
