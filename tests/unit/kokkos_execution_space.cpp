@@ -2,18 +2,42 @@
 
 #include <Kokkos_Core.hpp>
 
+struct validator
+{
+    bool operator()(int, int) const
+    {
+        return true;
+    }
+};
+
+struct operation
+{
+    KOKKOS_FUNCTION int operator()(int) const
+    {
+        return 42;
+    }
+};
+
 int main(int argc, char* argv[])
 {
     Kokkos::initialize(argc, argv);
 
     {
-        Kokkos::DefaultHostExecutionSpace inst();
-        Kokkos::ResilientReplay rinst(
-            3, KOKKOS_LAMBDA(int, int) { return true; }, inst);
+        validator validate{};
+        operation op{};
+
+        Kokkos::Experimental::HPX inst{};
+        Kokkos::ResilientReplay<Kokkos::Experimental::HPX, validator> rinst(
+            3, validate, inst);
 
         Kokkos::parallel_for(
-            Kokkos::RangePolicy<Kokkos::ResilientReplay>(rinst, 0, 100),
-            KOKKOS_LAMBDA(int i) { return i; });
+            Kokkos::RangePolicy<
+                Kokkos::ResilientReplay<Kokkos::Experimental::HPX, validator>>(
+                rinst, 0, 100),
+            op);
+        Kokkos::fence();
+
+        std::cout << "Execution Complete" << std::endl;
     }
 
     Kokkos::finalize();

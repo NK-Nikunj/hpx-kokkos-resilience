@@ -14,7 +14,7 @@ namespace Kokkos {
         class ResilientReplayFunctor
         {
         public:
-            KOKKOS_FUNCTION ResilentFunctor(
+            KOKKOS_FUNCTION ResilientReplayFunctor(
                 Functor const& f, Validator const& v, std::uint64_t n)
               : functor(f)
               , validator(v)
@@ -52,10 +52,11 @@ namespace Kokkos {
     public:
         // Typedefs for the ResilientReplay Execution Space
         using base_execution_space = ExecutionSpace;
+        using validator_type = Validator;
+
         using execution_space = ResilientReplay;
         using memory_space = typename ExecutionSpace::memory_space;
         using device_type = typename ExecutionSpace::device_type;
-        using array_layout = typename ExecutionSpace::array_type;
         using size_type = typename ExecutionSpace::size_type;
         using scratch_memory_space =
             typename ExecutionSpace::scratch_memory_space;
@@ -95,29 +96,45 @@ namespace Kokkos {
             template <typename ExecutionSpace, typename... Traits>
             struct RangePolicyBase
             {
-                using traits = Kokkos::RangePolicy<
-                    typename ExecutionSpace::base_execution_space, Traits...>;
-            }
+                using execution_space = ExecutionSpace;
+                using base_execution_space =
+                    typename execution_space::base_execution_space;
+                using RangePolicy =
+                    Kokkos::RangePolicy<base_execution_space, Traits...>;
+                using validator = typename execution_space::validator_type;
+            };
         }    // namespace traits
 
         template <typename FunctorType, typename... Traits>
         class ParallelFor<FunctorType, Kokkos::RangePolicy<Traits...>,
-            typename Kokkos::RangePolicy<Traits...>::traits::execution_space>
-          : ParallelFor<FunctorType,
-                Kokkos::RangePolicy<typename traits::RangePolicyBase::traits>,
-                typename traits::RangePolicyBase::traits::traits::
-                    execution_space>
+            ResilientReplay<typename traits::RangePolicyBase<
+                                Traits...>::base_execution_space,
+                typename traits::RangePolicyBase<Traits...>::validator>>
+          : public ParallelFor<
+                ResilientReplayFunctor<FunctorType,
+                    typename traits::RangePolicyBase<Traits...>::validator>,
+                typename traits::RangePolicyBase<Traits...>::RangePolicy,
+                typename traits::RangePolicyBase<
+                    Traits...>::base_execution_space>
         {
         public:
-            using base_type = ParallelFor<FunctorType,
-                Kokkos::RangePolicy<typename traits::RangePolicyBase::traits>,
-                typename traits::RangePolicyBase::traits::traits::
-                    execution_space>;
+            using Policy = Kokkos::RangePolicy<Traits...>;
+            using BasePolicy =
+                typename traits::RangePolicyBase<Traits...>::RangePolicy;
+            using validator_type =
+                typename traits::RangePolicyBase<Traits...>::validator;
+            using base_type =
+                ParallelFor<ResilientReplayFunctor<FunctorType, validator_type>,
+                    typename traits::RangePolicyBase<Traits...>::RangePolicy,
+                    typename traits::RangePolicyBase<
+                        Traits...>::base_execution_space>;
+            using base_execution_space = typename traits::RangePolicyBase<
+                Traits...>::base_execution_space;
 
             ParallelFor(
                 FunctorType const& arg_functor, const Policy& arg_policy)
-              : base_type(ResilientReplayFunctor(arg_functor,
-                              arg_policy.space().validator(),
+              : base_type(ResilientReplayFunctor<FunctorType, validator_type>(
+                              arg_functor, arg_policy.space().validator(),
                               arg_policy.space().replays()),
                     arg_policy)
             {
@@ -127,3 +144,13 @@ namespace Kokkos {
     }    // namespace Impl
 
 }    // namespace Kokkos
+
+namespace Kokkos { namespace Tools { namespace Experimental {
+
+    template <typename ExecutionSpace, typename Validator>
+    struct DeviceTypeTraits<Kokkos::ResilientReplay<ExecutionSpace, Validator>>
+    {
+        static constexpr DeviceType id = DeviceTypeTraits<ExecutionSpace>::id;
+    };
+
+}}}    // namespace Kokkos::Tools::Experimental
