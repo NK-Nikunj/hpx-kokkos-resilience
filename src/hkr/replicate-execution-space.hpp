@@ -12,7 +12,7 @@ namespace Kokkos {
 
     namespace Impl {
 
-        template <typename Functor, typename Validator>
+        template <typename ExecutionSpace, typename Functor, typename Validator>
         class ResilientReplicateFunctor
         {
         public:
@@ -21,6 +21,7 @@ namespace Kokkos {
               : functor(f)
               , validator(v)
               , replicates(n)
+              , incorrect_("result_correctness", 1)
             {
             }
 
@@ -46,19 +47,24 @@ namespace Kokkos {
                 }
 
                 if (!is_valid)
-                {
-#if defined(__CUDA_ARCH__)
-                    // Define something
-#else
-                    throw std::runtime_error("All Replicates lead to failure.");
-#endif
-                }
+                    incorrect_[0] = true;
+            }
+
+            bool is_incorrect() const
+            {
+                Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace>
+                    return_result("is_correct", 1);
+
+                Kokkos::deep_copy(return_result, incorrect_);
+
+                return return_result[0];
             }
 
         private:
-            Functor const& functor;
-            Validator const& validator;
+            const Functor functor;
+            const Validator validator;
             std::uint64_t replicates;
+            Kokkos::View<bool*, ExecutionSpace> incorrect_;
         };
 
     }    // namespace Impl
@@ -81,7 +87,7 @@ namespace Kokkos {
         template <typename... Args>
         ResilientReplicate(std::uint64_t n, Validator const& validator,
             Args&&... args) noexcept
-          : replays_(n)
+          : replicates_(n)
           , validator_(validator)
           , ExecutionSpace(args...)
         {
@@ -92,9 +98,9 @@ namespace Kokkos {
             return validator_;
         }
 
-        std::uint64_t replays() const noexcept
+        std::uint64_t replicates() const noexcept
         {
-            return replays_;
+            return replicates_;
         }
 
         KOKKOS_FUNCTION ResilientReplicate(
@@ -104,7 +110,7 @@ namespace Kokkos {
 
     private:
         Validator const& validator_;
-        std::uint64_t replays_;
+        std::uint64_t replicates_;
     };
 
     namespace Impl {
@@ -114,12 +120,6 @@ namespace Kokkos {
             ResilientReplicate<typename traits::RangePolicyBase<
                                    Traits...>::base_execution_space,
                 typename traits::RangePolicyBase<Traits...>::validator>>
-          : public ParallelFor<
-                ResilientReplicateFunctor<FunctorType,
-                    typename traits::RangePolicyBase<Traits...>::validator>,
-                typename traits::RangePolicyBase<Traits...>::RangePolicy,
-                typename traits::RangePolicyBase<
-                    Traits...>::base_execution_space>
         {
         public:
             using Policy = Kokkos::RangePolicy<Traits...>;
@@ -127,23 +127,41 @@ namespace Kokkos {
                 typename traits::RangePolicyBase<Traits...>::RangePolicy;
             using validator_type =
                 typename traits::RangePolicyBase<Traits...>::validator;
-            using base_type = ParallelFor<
-                ResilientReplicateFunctor<FunctorType, validator_type>,
-                typename traits::RangePolicyBase<Traits...>::RangePolicy,
-                typename traits::RangePolicyBase<
-                    Traits...>::base_execution_space>;
             using base_execution_space = typename traits::RangePolicyBase<
                 Traits...>::base_execution_space;
+            using base_type =
+                ParallelFor<ResilientReplicateFunctor<base_execution_space,
+                                FunctorType, validator_type>,
+                    typename traits::RangePolicyBase<Traits...>::RangePolicy,
+                    typename traits::RangePolicyBase<
+                        Traits...>::base_execution_space>;
 
             ParallelFor(
                 FunctorType const& arg_functor, const Policy& arg_policy)
-              : base_type(
-                    ResilientReplicateFunctor<FunctorType, validator_type>(
-                        arg_functor, arg_policy.space().validator(),
-                        arg_policy.space().replays()),
-                    arg_policy)
+              : m_functor(arg_functor)
+              , m_policy(arg_policy)
             {
             }
+
+            void execute() const
+            {
+                ResilientReplicateFunctor<base_execution_space, FunctorType,
+                    validator_type>
+                    inst(m_functor, m_policy.space().validator(),
+                        m_policy.space().replicates());
+
+                // Call the underlying ParallelFor
+                base_type closure(inst, m_policy);
+                closure.execute();
+
+                if (inst.is_incorrect())
+                    throw std::runtime_error(
+                        "All replicate returned incorrect result.");
+            }
+
+        private:
+            const FunctorType m_functor;
+            const Policy m_policy;
         };
 
     }    // namespace Impl

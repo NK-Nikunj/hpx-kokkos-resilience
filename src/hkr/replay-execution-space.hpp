@@ -12,7 +12,7 @@ namespace Kokkos {
 
     namespace Impl {
 
-        template <typename Functor, typename Validator>
+        template <typename ExecutionSpace, typename Functor, typename Validator>
         class ResilientReplayFunctor
         {
         public:
@@ -21,6 +21,7 @@ namespace Kokkos {
               : functor(f)
               , validator(v)
               , replays(n)
+              , incorrect_("result_correctness", 1)
             {
             }
 
@@ -36,20 +37,25 @@ namespace Kokkos {
                         break;
 
                     if (n == replays - 1)
-                    {
-#if defined(__CUDA_ARCH__)
-                        // Do something
-#else
-                        throw std::runtime_error("Out of Replays");
-#endif
-                    }
+                        incorrect_[0] = true;
                 }
             }
 
+            bool is_incorrect() const
+            {
+                Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace>
+                    return_result("is_correct", 1);
+
+                Kokkos::deep_copy(return_result, incorrect_);
+
+                return return_result[0];
+            }
+
         private:
-            Functor const& functor;
-            Validator const& validator;
+            const Functor functor;
+            const Validator validator;
             std::uint64_t replays;
+            Kokkos::View<bool*, ExecutionSpace> incorrect_;
         };
 
     }    // namespace Impl
@@ -72,9 +78,9 @@ namespace Kokkos {
         template <typename... Args>
         ResilientReplay(std::uint64_t n, Validator const& validator,
             Args&&... args) noexcept
-          : replays_(n)
+          : ExecutionSpace(args...)
           , validator_(validator)
-          , ExecutionSpace(args...)
+          , replays_(n)
         {
         }
 
@@ -104,12 +110,6 @@ namespace Kokkos {
             ResilientReplay<typename traits::RangePolicyBase<
                                 Traits...>::base_execution_space,
                 typename traits::RangePolicyBase<Traits...>::validator>>
-          : public ParallelFor<
-                ResilientReplayFunctor<FunctorType,
-                    typename traits::RangePolicyBase<Traits...>::validator>,
-                typename traits::RangePolicyBase<Traits...>::RangePolicy,
-                typename traits::RangePolicyBase<
-                    Traits...>::base_execution_space>
         {
         public:
             using Policy = Kokkos::RangePolicy<Traits...>;
@@ -117,22 +117,41 @@ namespace Kokkos {
                 typename traits::RangePolicyBase<Traits...>::RangePolicy;
             using validator_type =
                 typename traits::RangePolicyBase<Traits...>::validator;
+            using base_execution_space = typename traits::RangePolicyBase<
+                Traits...>::base_execution_space;
             using base_type =
-                ParallelFor<ResilientReplayFunctor<FunctorType, validator_type>,
+                ParallelFor<ResilientReplayFunctor<base_execution_space,
+                                FunctorType, validator_type>,
                     typename traits::RangePolicyBase<Traits...>::RangePolicy,
                     typename traits::RangePolicyBase<
                         Traits...>::base_execution_space>;
-            using base_execution_space = typename traits::RangePolicyBase<
-                Traits...>::base_execution_space;
 
             ParallelFor(
                 FunctorType const& arg_functor, const Policy& arg_policy)
-              : base_type(ResilientReplayFunctor<FunctorType, validator_type>(
-                              arg_functor, arg_policy.space().validator(),
-                              arg_policy.space().replays()),
-                    arg_policy)
+              : m_functor(arg_functor)
+              , m_policy(arg_policy)
             {
             }
+
+            void execute() const
+            {
+                ResilientReplayFunctor<base_execution_space, FunctorType,
+                    validator_type>
+                    inst(m_functor, m_policy.space().validator(),
+                        m_policy.space().replays());
+
+                // Call the underlying ParallelFor
+                base_type closure(inst, m_policy);
+                closure.execute();
+
+                if (inst.is_incorrect())
+                    throw std::runtime_error(
+                        "Program ran out of replay options.");
+            }
+
+        private:
+            const FunctorType m_functor;
+            const Policy m_policy;
         };
 
     }    // namespace Impl
