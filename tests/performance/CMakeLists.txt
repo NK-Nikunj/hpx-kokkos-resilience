@@ -5,6 +5,7 @@ set(_tests
     async_replicate
     experimental_replay
     experimental_replicate
+    kokkos_execution_space
     plain_async
     stencil
 )

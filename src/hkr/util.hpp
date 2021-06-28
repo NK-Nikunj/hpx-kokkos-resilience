@@ -1,7 +1,5 @@
 #pragma once
 
-#include <hpx/config.hpp>
-
 #include <algorithm>
 #include <exception>
 #include <string>

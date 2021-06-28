@@ -109,8 +109,8 @@ namespace Kokkos {
             ResilientReplicate const& other) = default;
 
     private:
-        Validator const& validator_;
-        std::uint64_t replicates_;
+        const Validator validator_;
+        const std::uint64_t replicates_;
     };
 
     namespace Impl {

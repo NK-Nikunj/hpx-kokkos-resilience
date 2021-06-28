@@ -99,8 +99,8 @@ namespace Kokkos {
         KOKKOS_FUNCTION ResilientReplay(ResilientReplay const& other) = default;
 
     private:
-        Validator const& validator_;
-        std::uint64_t replays_;
+        const Validator validator_;
+        const std::uint64_t replays_;
     };
 
     namespace Impl {
