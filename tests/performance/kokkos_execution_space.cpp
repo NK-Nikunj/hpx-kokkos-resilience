@@ -1,9 +1,14 @@
 #include <Kokkos_Random.hpp>
 
+#include <hpx/chrono.hpp>
+#include <hpx/hpx_init.hpp>
+#include <hpx/modules/algorithms.hpp>
+
 #include <hkr/replay-execution-space.hpp>
 #include <hkr/replicate-execution-space.hpp>
 
 #include <boost/program_options.hpp>
+#include <boost/range/irange.hpp>
 
 #include <random>
 
@@ -72,7 +77,7 @@ private:
 struct universal_ans_host
 {
     universal_ans_host(std::uint64_t delay,
-        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> error,
+        Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> const& error,
         std::uint64_t iterations)
       : delay_us(delay)
       , error_host(error)
@@ -85,15 +90,15 @@ struct universal_ans_host
         if (delay_us == 0)
             return 42;
 
-        Kokkos::Timer timer;
+        hpx::chrono::high_resolution_timer timer;
 
         while (true)
         {
             // Check if we've reached the specified delay
-            if ((timer.seconds() * 1e6 >= delay_us))
+            if ((timer.elapsed() * 1e6 >= delay_us))
             {
                 // Re-run the thread if the thread was meant to re-run
-                if (error_host[static_cast<int>(timer.seconds() * 1e6) %
+                if (error_host[static_cast<int>(timer.elapsed() * 1e6) %
                         num_iterations])
                     return 41;
 
@@ -109,11 +114,11 @@ struct universal_ans_host
 
 private:
     std::uint64_t delay_us;
-    Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> error_host;
+    Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> const& error_host;
     std::uint64_t num_iterations;
 };
 
-int main(int argc, char* argv[])
+int hpx_main(int argc, char* argv[])
 {
     Kokkos::initialize(argc, argv);
 
@@ -130,7 +135,7 @@ int main(int argc, char* argv[])
             bpo::value<std::uint64_t>()->default_value(3),
             "Number of repeat launches for async replay.");
         desc.add_options()("error-rate",
-            bpo::value<std::uint64_t>()->default_value(2),
+            bpo::value<std::uint64_t>()->default_value(0),
             "Average rate at which error is likely to occur.");
         desc.add_options()("grain-size",
             bpo::value<std::uint64_t>()->default_value(100),
@@ -156,85 +161,14 @@ int main(int argc, char* argv[])
         Kokkos::View<bool*, Kokkos::DefaultHostExecutionSpace> error_host(
             "Error_host", num_iterations);
 
-        Kokkos::parallel_for(num_iterations,
+        Kokkos::parallel_for(
+            Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
+                Kokkos::DefaultHostExecutionSpace{}, 0, num_iterations),
             [&](int i) { error_host[i] = (dist(gen) < error ? true : false); });
 
         Kokkos::deep_copy(error_host, error_device);
 
-#if defined(KOKKOS_ENABLE_CUDA)
-
-        if (!error)
-        {
-            std::cout << "Starting Kokkos parallel_for device" << std::endl;
-
-            Kokkos::Cuda inst{};
-
-            Kokkos::Timer timer;
-
-            for (int i = 0; i != 10; ++i)
-            {
-                Kokkos::parallel_for(
-                    Kokkos::RangePolicy<Kokkos::Cuda>(inst, 0, num_iterations),
-                    universal_ans_device{
-                        delay * 1000, error_device, num_iterations});
-                Kokkos::fence();
-            }
-
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
-        }
-
-        {
-            std::cout << "Starting Kokkos Resient Replay device" << std::endl;
-
-            Kokkos::Cuda inst{};
-            // Replay Strategy
-            Kokkos::ResilientReplay<Kokkos::Cuda, validate> replay_inst(
-                n, validate{}, inst);
-
-            Kokkos::Timer timer;
-
-            for (int i = 0; i != 10; ++i)
-            {
-                Kokkos::parallel_for(
-                    Kokkos::RangePolicy<
-                        Kokkos::ResilientReplay<Kokkos::Cuda, validate>>(
-                        replay_inst, 0, num_iterations),
-                    universal_ans_device{
-                        delay * 1000, error_device, num_iterations});
-                Kokkos::fence();
-            }
-
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
-        }
-
-        {
-            std::cout << "Starting Kokkos Resient Replicate device"
-                      << std::endl;
-
-            Kokkos::Cuda inst{};
-            // Replay Strategy
-            Kokkos::ResilientReplicate<Kokkos::Cuda, validate> replay_inst(
-                n, validate{}, inst);
-
-            Kokkos::Timer timer;
-
-            for (int i = 0; i != 10; ++i)
-            {
-                Kokkos::parallel_for(
-                    Kokkos::RangePolicy<
-                        Kokkos::ResilientReplicate<Kokkos::Cuda, validate>>(
-                        replay_inst, 0, num_iterations),
-                    universal_ans_device{
-                        delay * 1000, error_device, num_iterations});
-                Kokkos::fence();
-            }
-
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
-        }
-#endif
+        universal_ans_host host_functor(delay, error_host, num_iterations);
 
         if (!error)
         {
@@ -242,19 +176,20 @@ int main(int argc, char* argv[])
 
             Kokkos::DefaultHostExecutionSpace inst{};
 
-            Kokkos::Timer timer;
+            hpx::chrono::high_resolution_timer timer;
 
             for (int i = 0; i != 10; ++i)
             {
                 Kokkos::parallel_for(
                     Kokkos::RangePolicy<Kokkos::DefaultHostExecutionSpace>(
                         inst, 0, num_iterations),
-                    universal_ans_host{delay, error_host, num_iterations});
+                    host_functor);
                 Kokkos::fence();
             }
 
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
         }
 
         {
@@ -265,7 +200,7 @@ int main(int argc, char* argv[])
             Kokkos::ResilientReplay<Kokkos::DefaultHostExecutionSpace, validate>
                 replay_inst(n, validate{}, inst);
 
-            Kokkos::Timer timer;
+            hpx::chrono::high_resolution_timer timer;
 
             for (int i = 0; i != 10; ++i)
             {
@@ -273,12 +208,13 @@ int main(int argc, char* argv[])
                     Kokkos::RangePolicy<Kokkos::ResilientReplay<
                         Kokkos::DefaultHostExecutionSpace, validate>>(
                         replay_inst, 0, num_iterations),
-                    universal_ans_host{delay, error_host, num_iterations});
+                    host_functor);
                 Kokkos::fence();
             }
 
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
         }
 
         {
@@ -290,7 +226,7 @@ int main(int argc, char* argv[])
                 validate>
                 replay_inst(n, validate{}, inst);
 
-            Kokkos::Timer timer;
+            hpx::chrono::high_resolution_timer timer;
 
             for (int i = 0; i != 10; ++i)
             {
@@ -298,16 +234,100 @@ int main(int argc, char* argv[])
                     Kokkos::RangePolicy<Kokkos::ResilientReplicate<
                         Kokkos::DefaultHostExecutionSpace, validate>>(
                         replay_inst, 0, num_iterations),
-                    universal_ans_host{delay, error_host, num_iterations});
+                    host_functor);
                 Kokkos::fence();
             }
 
-            std::cout << "Execution Time: " << timer.seconds() / 10
-                      << std::endl;
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
         }
+
+#if defined(KOKKOS_ENABLE_CUDA)
+
+        universal_ans_device device_functor(
+            delay * 1000, error_device, num_iterations);
+
+        if (!error)
+        {
+            std::cout << "Starting Kokkos parallel_for device" << std::endl;
+
+            Kokkos::Cuda inst{};
+
+            hpx::chrono::high_resolution_timer timer;
+
+            for (int i = 0; i != 10; ++i)
+            {
+                Kokkos::parallel_for(
+                    Kokkos::RangePolicy<Kokkos::Cuda>(inst, 0, num_iterations),
+                    device_functor);
+                Kokkos::fence();
+            }
+
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
+        }
+
+        {
+            std::cout << "Starting Kokkos Resient Replay device" << std::endl;
+
+            Kokkos::Cuda inst{};
+            // Replay Strategy
+            Kokkos::ResilientReplay<Kokkos::Cuda, validate> replay_inst(
+                n, validate{}, inst);
+
+            hpx::chrono::high_resolution_timer timer;
+
+            for (int i = 0; i != 10; ++i)
+            {
+                Kokkos::parallel_for(
+                    Kokkos::RangePolicy<
+                        Kokkos::ResilientReplay<Kokkos::Cuda, validate>>(
+                        replay_inst, 0, num_iterations),
+                    device_functor);
+                Kokkos::fence();
+            }
+
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
+        }
+
+        {
+            std::cout << "Starting Kokkos Resient Replicate device"
+                      << std::endl;
+
+            Kokkos::Cuda inst{};
+            // Replay Strategy
+            Kokkos::ResilientReplicate<Kokkos::Cuda, validate> replay_inst(
+                n, validate{}, inst);
+
+            hpx::chrono::high_resolution_timer timer;
+
+            for (int i = 0; i != 10; ++i)
+            {
+                Kokkos::parallel_for(
+                    Kokkos::RangePolicy<
+                        Kokkos::ResilientReplicate<Kokkos::Cuda, validate>>(
+                        replay_inst, 0, num_iterations),
+                    device_functor);
+                Kokkos::fence();
+            }
+
+            double elapsed = timer.elapsed();
+
+            std::cout << "Execution Time: " << elapsed / 10 << std::endl;
+        }
+#endif
     }
 
     Kokkos::finalize();
 
-    return 0;
+    return hpx::finalize();
+}
+
+int main(int argc, char* argv[])
+{
+    return hpx::init(argc, argv);
 }
