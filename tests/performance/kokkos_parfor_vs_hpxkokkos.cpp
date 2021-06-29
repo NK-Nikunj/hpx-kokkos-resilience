@@ -11,13 +11,12 @@
 
 #include <random>
 
-#if defined(KOKKOS_ENABLE_CUDA)
 struct universal_ans_device
 {
-    HPX_HOST_DEVICE int operator()(std::uint64_t delay_ns) const
+    HPX_HOST_DEVICE void operator()(std::uint64_t delay_ns) const
     {
         if (delay_ns == 0)
-            return 42;
+            return;
 
         // Get current time from Nvidia GPU register
         std::uint64_t cur;
@@ -33,17 +32,16 @@ struct universal_ans_device
                 break;
         }
 
-        return 42;
+        return;
     }
 };
-#endif
 
 struct universal_ans_host
 {
-    HPX_HOST_DEVICE int operator()(std::uint64_t delay_us) const
+    HPX_HOST_DEVICE void operator()(std::uint64_t delay_us) const
     {
         if (delay_us == 0)
-            return 42;
+            return;
 
         Kokkos::Timer timer;
 
@@ -54,7 +52,7 @@ struct universal_ans_host
                 break;
         }
 
-        return 42;
+        return;
     }
 };
 
@@ -74,7 +72,7 @@ int main(int argc, char* argv[])
             "Time in us taken by a thread to execute before it terminates.");
         desc.add_options()("iterations",
             bpo::value<std::uint64_t>()->default_value(10000),
-            "Number of tasks to launch.");
+            "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
 
@@ -86,62 +84,86 @@ int main(int argc, char* argv[])
         std::uint64_t delay = vm["exec-time"].as<std::uint64_t>();
         std::uint64_t num_iterations = vm["iterations"].as<std::uint64_t>();
 
-#if defined(KOKKOS_ENABLE_CUDA)
         {
-            std::cout << "Starting plain async" << std::endl;
+            std::cout << "Kokkos Parallel-For with CUDA" << std::endl;
 
-            std::vector<hpx::future<int>> vect;
+            hpx::chrono::high_resolution_timer t;
+
+            Kokkos::parallel_for(
+                Kokkos::Experimental::require(
+                    Kokkos::RangePolicy<Kokkos::Cuda>(
+                        Kokkos::Cuda{}, 0, num_iterations),
+                    Kokkos::Experimental::WorkItemProperty::HintLightWeight),
+                universal_ans_host{});
+            Kokkos::fence();
+
+            double elapsed = t.elapsed();
+            hpx::util::format_to(std::cout, "Execution time = {1}\n", elapsed);
+        }
+
+        {
+            std::cout << "Async with Kokkos Device" << std::endl;
+
+            std::vector<hpx::shared_future<void>> vect;
             vect.reserve(num_iterations);
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::future<int> f = hpx::async(
-                    hpx::kokkos::returning_executor{
+                hpx::shared_future<void> f = hpx::async(
+                    hpx::kokkos::default_executor{
                         hpx::kokkos::execution_space_mode::independent},
                     universal_ans_device{}, delay * 1e3);
 
                 vect.push_back(std::move(f));
             }
 
-            for (int i = 0; i < num_iterations; ++i)
-            {
-                vect[i].get();
-            }
+            hpx::wait_all(vect);
 
             double elapsed = t.elapsed();
-            hpx::util::format_to(
-                std::cout, "Plain Async execution time = {1}\n", elapsed);
+            hpx::util::format_to(std::cout, "Execution time = {1}\n", elapsed);
         }
-#endif
 
         {
-            std::cout << "Starting plain async" << std::endl;
+            std::cout << "Kokkos Parallel-For with HPX" << std::endl;
 
-            std::vector<hpx::future<int>> vect;
+            hpx::chrono::high_resolution_timer t;
+
+            Kokkos::parallel_for(
+                Kokkos::Experimental::require(
+                    Kokkos::RangePolicy<Kokkos::Experimental::HPX>(
+                        Kokkos::Experimental::HPX{}, 0, num_iterations),
+                    Kokkos::Experimental::WorkItemProperty::HintLightWeight),
+                universal_ans_host{});
+            Kokkos::fence();
+
+            double elapsed = t.elapsed();
+            hpx::util::format_to(std::cout, "Execution time = {1}\n", elapsed);
+        }
+
+        {
+            std::cout << "Async with Kokkos Host" << std::endl;
+
+            std::vector<hpx::shared_future<void>> vect;
             vect.reserve(num_iterations);
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::future<int> f = hpx::async(
-                    hpx::kokkos::returning_host_executor{
+                hpx::shared_future<void> f = hpx::async(
+                    hpx::kokkos::default_host_executor{
                         hpx::kokkos::execution_space_mode::independent},
                     universal_ans_host{}, delay);
 
                 vect.push_back(std::move(f));
             }
 
-            for (int i = 0; i < num_iterations; ++i)
-            {
-                vect[i].get();
-            }
+            hpx::wait_all(vect);
 
             double elapsed = t.elapsed();
-            hpx::util::format_to(
-                std::cout, "Plain Async execution time = {1}\n", elapsed);
+            hpx::util::format_to(std::cout, "Execution time = {1}\n", elapsed);
         }
     }
 
