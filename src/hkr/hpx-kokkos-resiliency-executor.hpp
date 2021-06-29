@@ -5,6 +5,7 @@
 #include <hpx/kokkos.hpp>
 
 #include <hkr/hpx-kokkos-resiliency-cpos.hpp>
+#include <hkr/traits.hpp>
 
 #include <boost/type_index.hpp>
 

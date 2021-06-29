@@ -5,6 +5,8 @@
 #include <hkr/hpx-kokkos-resiliency-executor.hpp>
 #include <hkr/hpx-kokkos-resiliency.hpp>
 
+#include <hkr/kokkos-executor.hpp>
+
 #include <boost/program_options.hpp>
 
 #include <random>
@@ -102,9 +104,6 @@ int main(int argc, char* argv[])
 
         hpx::kokkos::detail::polling_helper helper;
 
-        hpx::kokkos::returning_executor exec_;
-        hpx::kokkos::returning_host_executor host_exec_;
-
         namespace bpo = boost::program_options;
 
         bpo::options_description desc("Options");
@@ -119,8 +118,8 @@ int main(int argc, char* argv[])
             bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
         desc.add_options()("iterations",
-            bpo::value<std::uint64_t>()->default_value(10000),
-            "Number of tasks to launch.");
+            bpo::value<std::uint64_t>()->default_value(1000),
+            "Time in us taken by a thread to execute before it terminates.");
 
         bpo::variables_map vm;
 
@@ -148,19 +147,23 @@ int main(int argc, char* argv[])
         {
             std::cout << "Starting async replay" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
+
+            Kokkos::Cuda device_inst{};
+            auto device_exec =
+                hpx::kokkos::experimental::resiliency::make_replicate_executor(
+                    device_inst, n, validate{});
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::kokkos::resiliency::async_replay_validate(exec_, n,
-                        validate{}, universal_ans_device{}, delay * 1e3,
+                hpx::future<int> f =
+                    hpx::async(device_exec, universal_ans_device{}, delay * 1e3,
                         error_device, num_iterations);
 
-                vect.push_back(std::move(f));
+                vect.emplace_back(std::move(f));
             }
 
             try
@@ -186,19 +189,22 @@ int main(int argc, char* argv[])
         {
             std::cout << "Starting async replay" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
+
+            Kokkos::Experimental::HPX host_inst{};
+            auto host_exec =
+                hpx::kokkos::experimental::resiliency::make_replicate_executor(
+                    host_inst, n, validate{});
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::kokkos::resiliency::async_replay_validate(host_exec_,
-                        n, validate{}, universal_ans_host{}, delay, error_host,
-                        num_iterations);
+                hpx::future<int> f = hpx::async(host_exec, universal_ans_host{},
+                    delay, error_host, num_iterations);
 
-                vect.push_back(std::move(f));
+                vect.emplace_back(std::move(f));
             }
 
             try

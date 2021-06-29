@@ -1,9 +1,13 @@
 #include <Kokkos_Random.hpp>
 
 #include <hpx/kokkos/detail/polling_helper.hpp>
+#include <hpx/modules/async_cuda.hpp>
+#include <hpx/modules/resiliency.hpp>
+
 #include <hkr/executor/returning-executor.hpp>
 #include <hkr/hpx-kokkos-resiliency-executor.hpp>
 #include <hkr/hpx-kokkos-resiliency.hpp>
+#include <hkr/kokkos-executor.hpp>
 
 #include <boost/program_options.hpp>
 
@@ -57,6 +61,40 @@ struct universal_ans_device
         return 42;
     }
 };
+
+__global__ void plain_cuda_kernel(std::uint64_t delay_ns,
+    Kokkos::View<bool*, Kokkos::DefaultExecutionSpace> error_device,
+    int num_iterations)
+{
+    if (delay_ns == 0)
+        return;
+
+    // Get current time from Nvidia GPU register
+    std::uint64_t cur;
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(cur));
+
+    while (true)
+    {
+        std::uint64_t now;
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(now));
+
+        // Check if we've reached the specified delay
+        if (now - cur >= delay_ns)
+        {
+            // Re-run the thread if the thread was meant to re-run
+            if (error_device[cur % num_iterations])
+                return;
+
+            // No error has to occur with this thread, simply break the loop
+            // after execution is done for the desired time
+            else
+                break;
+        }
+    }
+
+    return;
+}
+
 #endif
 
 struct universal_ans_host
@@ -102,9 +140,6 @@ int main(int argc, char* argv[])
 
         hpx::kokkos::detail::polling_helper helper;
 
-        hpx::kokkos::returning_executor exec_;
-        hpx::kokkos::returning_host_executor host_exec_;
-
         namespace bpo = boost::program_options;
 
         bpo::options_description desc("Options");
@@ -119,8 +154,8 @@ int main(int argc, char* argv[])
             bpo::value<std::uint64_t>()->default_value(100),
             "Time in us taken by a thread to execute before it terminates.");
         desc.add_options()("iterations",
-            bpo::value<std::uint64_t>()->default_value(10000),
-            "Number of tasks to launch.");
+            bpo::value<std::uint64_t>()->default_value(1000),
+            "Number of tasks to create.");
 
         bpo::variables_map vm;
 
@@ -146,21 +181,80 @@ int main(int argc, char* argv[])
 
 #if defined(KOKKOS_ENABLE_CUDA)
         {
-            std::cout << "Starting async replay" << std::endl;
+            std::cout << "Starting async replay device" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
+
+            Kokkos::Cuda device_inst{};
+            auto device_exec =
+                hpx::kokkos::experimental::resiliency::make_replay_executor(
+                    device_inst, n, validate{});
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::kokkos::resiliency::async_replay_validate(exec_, n,
-                        validate{}, universal_ans_device{}, delay * 1e3,
+                hpx::future<int> f =
+                    hpx::async(device_exec, universal_ans_device{}, delay * 1e3,
                         error_device, num_iterations);
 
-                vect.push_back(std::move(f));
+                vect.emplace_back(std::move(f));
+            }
+
+            try
+            {
+                for (int i = 0; i < num_iterations; ++i)
+                {
+                    vect[i].get();
+                }
+            }
+            catch (...)
+            {
+                std::cout << "Number of repeat launches were not enough to get "
+                             "past the injected error levels"
+                          << std::endl;
+            }
+
+            double elapsed = t.elapsed();
+            hpx::util::format_to(
+                std::cout, "Async replay execution time = {1}\n", elapsed);
+        }
+
+        {
+            std::cout << "Starting Plain HPX CUDA only kernels (no resilience)"
+                      << std::endl;
+
+            // install cuda future polling handler
+            hpx::cuda::experimental::enable_user_polling poll("default");
+
+            std::vector<hpx::future<void>> vect;
+
+            std::uint64_t timer = delay * 1e3;
+
+            int device;
+            cudaGetDevice(&device);
+
+            // create a cuda target using device number 0,1,2...
+            hpx::cuda::experimental::target target(device);
+
+            // create a stream helper object
+            hpx::cuda::experimental::cuda_executor cudaexec(
+                static_cast<std::size_t>(device),
+                hpx::cuda::experimental::event_mode{});
+
+            void* args[] = {&timer, &error_device, &num_iterations};
+
+            hpx::chrono::high_resolution_timer t;
+
+            for (int i = 0; i < num_iterations; ++i)
+            {
+                hpx::future<void> f =
+                    hpx::async(cudaexec, cudaLaunchKernel<void>,
+                        reinterpret_cast<const void*>(&plain_cuda_kernel),
+                        dim3(1), dim3(1), args, std::size_t(0));
+
+                vect.emplace_back(std::move(f));
             }
 
             try
@@ -184,21 +278,24 @@ int main(int argc, char* argv[])
 #endif
 
         {
-            std::cout << "Starting async replay" << std::endl;
+            std::cout << "Starting async replay host" << std::endl;
 
-            std::vector<hpx::shared_future<int>> vect;
+            std::vector<hpx::future<int>> vect;
             vect.reserve(num_iterations);
+
+            Kokkos::Experimental::HPX host_inst{};
+            auto host_exec =
+                hpx::kokkos::experimental::resiliency::make_replay_executor(
+                    host_inst, n, validate{});
 
             hpx::chrono::high_resolution_timer t;
 
             for (int i = 0; i < num_iterations; ++i)
             {
-                hpx::shared_future<int> f =
-                    hpx::kokkos::resiliency::async_replay_validate(host_exec_,
-                        n, validate{}, universal_ans_host{}, delay, error_host,
-                        num_iterations);
+                hpx::future<int> f = hpx::async(host_exec, universal_ans_host{},
+                    delay, error_host, num_iterations);
 
-                vect.push_back(std::move(f));
+                vect.emplace_back(std::move(f));
             }
 
             try
@@ -207,6 +304,43 @@ int main(int argc, char* argv[])
                 {
                     vect[i].get();
                 }
+            }
+            catch (...)
+            {
+                std::cout << "Number of repeat launches were not enough to get "
+                             "past the injected error levels"
+                          << std::endl;
+            }
+
+            double elapsed = t.elapsed();
+            hpx::util::format_to(
+                std::cout, "Async replay execution time = {1}\n", elapsed);
+        }
+
+        {
+            std::cout << "Starting HPX resilience local module replay"
+                      << std::endl;
+
+            std::vector<hpx::future<int>> vect;
+
+            hpx::execution::parallel_executor base_exec{};
+            auto exec = hpx::resiliency::experimental::make_replay_executor(
+                base_exec, n, validate{});
+
+            hpx::chrono::high_resolution_timer t;
+
+            for (int i = 0; i < num_iterations; ++i)
+            {
+                hpx::future<int> f = hpx::async(exec, universal_ans_host{},
+                    delay, error_host, num_iterations);
+
+                vect.emplace_back(std::move(f));
+            }
+
+            try
+            {
+                for (int i = 0; i < num_iterations; ++i)
+                    vect[i].get();
             }
             catch (...)
             {
